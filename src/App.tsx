@@ -22,6 +22,10 @@ function App() {
     isReapplying,
     doneCount,
     toggleFace,
+    addManualFace,
+    removeManualFace,
+    toggleManualFace,
+    resizeManualFace,
     facesUpdatingIds,
     limitNotice,
     dismissLimitNotice,
@@ -98,6 +102,10 @@ function App() {
           method={method}
           onMethodChange={setMethod}
           onToggleFace={toggleFace}
+          onAddManualFace={addManualFace}
+          onRemoveManualFace={removeManualFace}
+          onToggleManualFace={toggleManualFace}
+          onResizeManualFace={resizeManualFace}
           facesUpdatingIds={facesUpdatingIds}
           onAddFiles={addFiles}
           onClear={clear}

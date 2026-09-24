@@ -1,10 +1,28 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { anonymizeImage, DEFAULT_ANONYMIZE_OPTIONS, reapplyEffect } from '../lib/anonymize'
 import { isAcceptedFile } from '../lib/heic'
-import type { AnonymizeMethod, QueueItem } from '../types'
+import type { AnonymizeMethod, Box, ManualFace, QueueItem } from '../types'
 
 /** Upper bound on concurrently queued images — face detection is CPU-heavy, so this keeps the UI responsive. */
 export const MAX_IMAGES = 25
+
+/**
+ * Builds the full box list (detected + manual) and the exclusion set (by index into that
+ * combined list) for a single render call. Manual faces are appended after detected ones,
+ * so their combined index is always `detectedBoxes.length + <their position>`.
+ */
+function buildCombinedRenderInputs(
+  detectedBoxes: Box[],
+  excludedFaceIndices: number[],
+  manualFaceBoxes: ManualFace[],
+): { boxes: Box[]; excluded: Set<number> } {
+  const boxes = [...detectedBoxes, ...manualFaceBoxes.map((face) => face.box)]
+  const excluded = new Set(excludedFaceIndices)
+  manualFaceBoxes.forEach((face, i) => {
+    if (face.excluded) excluded.add(detectedBoxes.length + i)
+  })
+  return { boxes, excluded }
+}
 
 export function useAnonymizeQueue(method: AnonymizeMethod) {
   const [items, setItems] = useState<QueueItem[]>([])
@@ -46,6 +64,7 @@ export function useAnonymizeQueue(method: AnonymizeMethod) {
       previewUrl: URL.createObjectURL(file),
       status: 'queued',
       excludedFaceIndices: [],
+      manualFaceBoxes: [],
     }))
     setItems((prev) => [...prev, ...newItems])
   }, [])
@@ -110,14 +129,24 @@ export function useAnonymizeQueue(method: AnonymizeMethod) {
         await Promise.all(
           doneItems.map(async (item) => {
             try {
+              const detectedBoxes = item.result!.faceBoxes
+              const { boxes, excluded } = buildCombinedRenderInputs(
+                detectedBoxes,
+                item.excludedFaceIndices,
+                item.manualFaceBoxes,
+              )
               const result = await reapplyEffect(
                 item.file,
-                item.result!.faceBoxes,
+                boxes,
                 { ...DEFAULT_ANONYMIZE_OPTIONS, method },
-                new Set(item.excludedFaceIndices),
+                excluded,
               )
               URL.revokeObjectURL(item.result!.url)
-              updateItem(item.id, { result })
+              // Keep faceBoxes/faceCount reflecting only the detected faces — the combined
+              // list above is transient, just for this render call.
+              updateItem(item.id, {
+                result: { ...result, faceBoxes: detectedBoxes, faceCount: detectedBoxes.length },
+              })
             } catch {
               // Keep the previous result rather than losing an already-successful
               // anonymization over a transient canvas error on redraw.
@@ -136,10 +165,17 @@ export function useAnonymizeQueue(method: AnonymizeMethod) {
       if (!item || item.status !== 'done' || !item.result) return
       if (facesUpdatingRef.current.has(itemId)) return
 
-      const excluded = new Set(item.excludedFaceIndices)
-      if (excluded.has(faceIndex)) excluded.delete(faceIndex)
-      else excluded.add(faceIndex)
-      const excludedFaceIndices = Array.from(excluded)
+      const excludedSet = new Set(item.excludedFaceIndices)
+      if (excludedSet.has(faceIndex)) excludedSet.delete(faceIndex)
+      else excludedSet.add(faceIndex)
+      const excludedFaceIndices = Array.from(excludedSet)
+
+      const detectedBoxes = item.result.faceBoxes
+      const { boxes, excluded } = buildCombinedRenderInputs(
+        detectedBoxes,
+        excludedFaceIndices,
+        item.manualFaceBoxes,
+      )
 
       facesUpdatingRef.current.add(itemId)
       setFacesUpdatingIds(Array.from(facesUpdatingRef.current))
@@ -148,12 +184,15 @@ export function useAnonymizeQueue(method: AnonymizeMethod) {
         try {
           const result = await reapplyEffect(
             item.file,
-            item.result!.faceBoxes,
+            boxes,
             { ...DEFAULT_ANONYMIZE_OPTIONS, method: methodRef.current },
             excluded,
           )
           URL.revokeObjectURL(item.result!.url)
-          updateItem(itemId, { result, excludedFaceIndices })
+          updateItem(itemId, {
+            result: { ...result, faceBoxes: detectedBoxes, faceCount: detectedBoxes.length },
+            excludedFaceIndices,
+          })
         } catch {
           // Keep the previous result rather than losing it over a transient canvas error.
         } finally {
@@ -163,6 +202,82 @@ export function useAnonymizeQueue(method: AnonymizeMethod) {
       })()
     },
     [updateItem],
+  )
+
+  /**
+   * Shared implementation for adding/removing/toggling/resizing a manually placed face:
+   * computes the new manualFaceBoxes array, re-renders with detected + manual faces
+   * combined, and commits both the new render and the new manualFaceBoxes together.
+   */
+  const applyManualFacesChange = useCallback(
+    (itemId: string, updater: (manualFaceBoxes: ManualFace[]) => ManualFace[]) => {
+      const item = itemsRef.current.find((entry) => entry.id === itemId)
+      if (!item || item.status !== 'done' || !item.result) return
+      if (facesUpdatingRef.current.has(itemId)) return
+
+      const manualFaceBoxes = updater(item.manualFaceBoxes)
+      const detectedBoxes = item.result.faceBoxes
+      const { boxes, excluded } = buildCombinedRenderInputs(
+        detectedBoxes,
+        item.excludedFaceIndices,
+        manualFaceBoxes,
+      )
+
+      facesUpdatingRef.current.add(itemId)
+      setFacesUpdatingIds(Array.from(facesUpdatingRef.current))
+
+      void (async () => {
+        try {
+          const result = await reapplyEffect(
+            item.file,
+            boxes,
+            { ...DEFAULT_ANONYMIZE_OPTIONS, method: methodRef.current },
+            excluded,
+          )
+          URL.revokeObjectURL(item.result!.url)
+          updateItem(itemId, {
+            result: { ...result, faceBoxes: detectedBoxes, faceCount: detectedBoxes.length },
+            manualFaceBoxes,
+          })
+        } catch {
+          // Keep the previous result rather than losing it over a transient canvas error.
+        } finally {
+          facesUpdatingRef.current.delete(itemId)
+          setFacesUpdatingIds(Array.from(facesUpdatingRef.current))
+        }
+      })()
+    },
+    [updateItem],
+  )
+
+  const addManualFace = useCallback(
+    (itemId: string, box: Box) => {
+      applyManualFacesChange(itemId, (faces) => [...faces, { id: crypto.randomUUID(), box, excluded: false }])
+    },
+    [applyManualFacesChange],
+  )
+
+  const removeManualFace = useCallback(
+    (itemId: string, faceId: string) => {
+      applyManualFacesChange(itemId, (faces) => faces.filter((face) => face.id !== faceId))
+    },
+    [applyManualFacesChange],
+  )
+
+  const toggleManualFace = useCallback(
+    (itemId: string, faceId: string) => {
+      applyManualFacesChange(itemId, (faces) =>
+        faces.map((face) => (face.id === faceId ? { ...face, excluded: !face.excluded } : face)),
+      )
+    },
+    [applyManualFacesChange],
+  )
+
+  const resizeManualFace = useCallback(
+    (itemId: string, faceId: string, box: Box) => {
+      applyManualFacesChange(itemId, (faces) => faces.map((face) => (face.id === faceId ? { ...face, box } : face)))
+    },
+    [applyManualFacesChange],
   )
 
   const isProcessing = items.some((item) => item.status === 'queued' || item.status === 'processing')
@@ -179,5 +294,9 @@ export function useAnonymizeQueue(method: AnonymizeMethod) {
     facesUpdatingIds,
     limitNotice,
     dismissLimitNotice,
+    addManualFace,
+    removeManualFace,
+    toggleManualFace,
+    resizeManualFace,
   }
 }

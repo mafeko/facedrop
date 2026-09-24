@@ -8,7 +8,9 @@ interface ImagePreviewModalProps {
 }
 
 export function ImagePreviewModal({ item, onClose, onEditManually }: ImagePreviewModalProps) {
-  const canEditManually = item.status === 'done' && (item.result?.faceCount ?? 0) > 0
+  // Shown for every processed image, not just ones with a detected face — manual editing
+  // also covers adding a face the detector missed entirely (e.g. a crowded group photo).
+  const canEditManually = item.status === 'done'
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {

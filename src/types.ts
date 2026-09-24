@@ -20,6 +20,14 @@ export interface ProcessedImage {
   faceBoxes: Box[]
 }
 
+/** A face region the user placed by hand — a fallback for faces the detector missed. */
+export interface ManualFace {
+  id: string
+  box: Box
+  /** Excluded from anonymization (kept visible), same meaning as `excludedFaceIndices` for detected faces. */
+  excluded: boolean
+}
+
 export interface QueueItem {
   id: string
   file: File
@@ -29,4 +37,6 @@ export interface QueueItem {
   error?: string
   /** Indices into `result.faceBoxes` that are excluded from anonymization (kept visible). */
   excludedFaceIndices: number[]
+  /** User-added faces the detector didn't find, e.g. in a crowded group photo. */
+  manualFaceBoxes: ManualFace[]
 }

@@ -1,13 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import { MethodToggle } from './MethodToggle'
 import { ACCEPT_ATTR } from '../lib/heic'
-import type { AnonymizeMethod, Box, QueueItem } from '../types'
+import type { AnonymizeMethod, Box, ManualFace, QueueItem } from '../types'
 
 interface ManualEditorProps {
   items: QueueItem[]
   method: AnonymizeMethod
   onMethodChange: (method: AnonymizeMethod) => void
   onToggleFace: (itemId: string, faceIndex: number) => void
+  onAddManualFace: (itemId: string, box: Box) => void
+  onRemoveManualFace: (itemId: string, faceId: string) => void
+  onToggleManualFace: (itemId: string, faceId: string) => void
+  onResizeManualFace: (itemId: string, faceId: string, box: Box) => void
   facesUpdatingIds: string[]
   onAddFiles: (files: File[]) => void
   onClear: () => void
@@ -26,6 +30,10 @@ export function ManualEditor({
   method,
   onMethodChange,
   onToggleFace,
+  onAddManualFace,
+  onRemoveManualFace,
+  onToggleManualFace,
+  onResizeManualFace,
   facesUpdatingIds,
   onAddFiles,
   onClear,
@@ -65,6 +73,10 @@ export function ManualEditor({
       <EditArea
         item={selectedItem}
         onToggleFace={onToggleFace}
+        onAddManualFace={onAddManualFace}
+        onRemoveManualFace={onRemoveManualFace}
+        onToggleManualFace={onToggleManualFace}
+        onResizeManualFace={onResizeManualFace}
         isUpdating={selectedItem ? facesUpdatingIds.includes(selectedItem.id) : false}
       />
 
@@ -163,10 +175,18 @@ function Toolbar({
 function EditArea({
   item,
   onToggleFace,
+  onAddManualFace,
+  onRemoveManualFace,
+  onToggleManualFace,
+  onResizeManualFace,
   isUpdating,
 }: {
   item: QueueItem | null
   onToggleFace: (itemId: string, faceIndex: number) => void
+  onAddManualFace: (itemId: string, box: Box) => void
+  onRemoveManualFace: (itemId: string, faceId: string) => void
+  onToggleManualFace: (itemId: string, faceId: string) => void
+  onResizeManualFace: (itemId: string, faceId: string, box: Box) => void
   isUpdating: boolean
 }) {
   if (!item) {
@@ -200,7 +220,16 @@ function EditArea({
       className="min-h-0 flex-1 overflow-hidden p-4"
     >
       {/* Keyed by item id so local measurement state resets cleanly when the selection changes. */}
-      <FaceCanvas key={item.id} item={item} onToggleFace={onToggleFace} isUpdating={isUpdating} />
+      <FaceCanvas
+        key={item.id}
+        item={item}
+        onToggleFace={onToggleFace}
+        onAddManualFace={onAddManualFace}
+        onRemoveManualFace={onRemoveManualFace}
+        onToggleManualFace={onToggleManualFace}
+        onResizeManualFace={onResizeManualFace}
+        isUpdating={isUpdating}
+      />
     </div>
   )
 }
@@ -228,10 +257,18 @@ function computeContainRect(
 function FaceCanvas({
   item,
   onToggleFace,
+  onAddManualFace,
+  onRemoveManualFace,
+  onToggleManualFace,
+  onResizeManualFace,
   isUpdating,
 }: {
   item: QueueItem
   onToggleFace: (itemId: string, faceIndex: number) => void
+  onAddManualFace: (itemId: string, box: Box) => void
+  onRemoveManualFace: (itemId: string, faceId: string) => void
+  onToggleManualFace: (itemId: string, faceId: string) => void
+  onResizeManualFace: (itemId: string, faceId: string, box: Box) => void
   isUpdating: boolean
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -253,8 +290,44 @@ function FaceCanvas({
 
   const rect = containerSize && naturalSize ? computeContainRect(containerSize, naturalSize) : null
 
+  function handleDoubleClick(event: React.MouseEvent<HTMLDivElement>) {
+    if (isUpdating || !rect || !naturalSize || !containerSize) return
+    const target = event.target as HTMLElement
+
+    // Double-clicking an existing marker (detected or manual) shouldn't stack a new one
+    // underneath it — removal of a manual face has its own explicit button instead, since
+    // a marker's single click already toggles it, which would race a double-click here.
+    if (target.closest('[data-testid="face-marker"], [data-testid="manual-face-marker"]')) return
+
+    const containerRect = event.currentTarget.getBoundingClientRect()
+    const sourceX = (event.clientX - containerRect.left - rect.offsetX) / rect.scale
+    const sourceY = (event.clientY - containerRect.top - rect.offsetY) / rect.scale
+    if (sourceX < 0 || sourceY < 0 || sourceX > naturalSize.width || sourceY > naturalSize.height) return
+
+    // Sized in screen space, not source-image space: a small/heavily-upscaled source image
+    // (large rect.scale) would otherwise turn a "reasonable" source-pixel radius into a
+    // circle bigger than the viewport, pushing its resize handle off-screen (unreachable).
+    // Capping the on-screen diameter guarantees the whole marker — including the handle —
+    // always fits within the visible editor.
+    const viewportMinDimension = Math.min(containerSize.width, containerSize.height)
+    const onScreenDiameter = Math.min(140, Math.max(48, viewportMinDimension * 0.2))
+    const sourceRadius = Math.max(4, onScreenDiameter / 2 / rect.scale)
+
+    onAddManualFace(item.id, {
+      x: sourceX - sourceRadius,
+      y: sourceY - sourceRadius,
+      width: sourceRadius * 2,
+      height: sourceRadius * 2,
+    })
+  }
+
   return (
-    <div ref={containerRef} className="relative h-full w-full">
+    <div
+      ref={containerRef}
+      data-testid="face-canvas"
+      onDoubleClick={handleDoubleClick}
+      className="relative h-full w-full"
+    >
       {/* object-contain guarantees the whole photo stays visible (letterboxed, never cropped)
           regardless of its aspect ratio vs. the available editor space. */}
       <img
@@ -279,6 +352,29 @@ function FaceCanvas({
             onToggle={() => onToggleFace(item.id, index)}
           />
         ))}
+
+      {rect &&
+        naturalSize &&
+        item.manualFaceBoxes.map((face) => (
+          <ManualFaceMarker
+            key={face.id}
+            face={face}
+            rect={rect}
+            naturalSize={naturalSize}
+            containerRef={containerRef}
+            disabled={isUpdating}
+            onToggle={() => onToggleManualFace(item.id, face.id)}
+            onResize={(box) => onResizeManualFace(item.id, face.id, box)}
+            onRemove={() => onRemoveManualFace(item.id, face.id)}
+          />
+        ))}
+
+      {rect && (
+        <p className="pointer-events-none absolute bottom-3 left-3 max-w-[85%] rounded-md bg-black/55 px-2.5 py-1.5 text-xs text-white">
+          Tipp: Doppelklick fügt ein nicht erkanntes Gesicht manuell hinzu — am Punkt lässt sich die
+          Größe anpassen, über das × wieder entfernen.
+        </p>
+      )}
 
       {isUpdating && (
         <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/10">
@@ -344,6 +440,128 @@ function FaceMarker({
   )
 }
 
+/**
+ * A user-placed face marker — same toggle behavior as a detected `FaceMarker`, plus a drag
+ * handle to resize it (the AI has no box to go by here, so the user picks one) and a dashed
+ * border to visually mark it as manual rather than detected.
+ */
+function ManualFaceMarker({
+  face,
+  rect,
+  naturalSize,
+  containerRef,
+  disabled,
+  onToggle,
+  onResize,
+  onRemove,
+}: {
+  face: ManualFace
+  rect: ContainRect
+  naturalSize: { width: number; height: number }
+  containerRef: { current: HTMLDivElement | null }
+  disabled: boolean
+  onToggle: () => void
+  onResize: (box: Box) => void
+  onRemove: () => void
+}) {
+  const [liveBox, setLiveBox] = useState<Box | null>(null)
+  const box = liveBox ?? face.box
+
+  const size = Math.max(box.width, box.height) * rect.scale
+  const centerX = rect.offsetX + (box.x + box.width / 2) * rect.scale
+  const centerY = rect.offsetY + (box.y + box.height / 2) * rect.scale
+
+  function handleResizePointerDown(event: React.PointerEvent<HTMLSpanElement>) {
+    if (disabled) return
+    event.stopPropagation()
+    event.preventDefault()
+
+    const container = containerRef.current
+    if (!container) return
+    const centerSourceX = face.box.x + face.box.width / 2
+    const centerSourceY = face.box.y + face.box.height / 2
+    const minRadius = 12
+    const maxRadius = Math.min(naturalSize.width, naturalSize.height) / 2
+
+    function handleMove(moveEvent: PointerEvent) {
+      const containerRect = container!.getBoundingClientRect()
+      const sourceX = (moveEvent.clientX - containerRect.left - rect.offsetX) / rect.scale
+      const sourceY = (moveEvent.clientY - containerRect.top - rect.offsetY) / rect.scale
+      const radius = Math.min(
+        maxRadius,
+        Math.max(minRadius, Math.hypot(sourceX - centerSourceX, sourceY - centerSourceY)),
+      )
+      setLiveBox({ x: centerSourceX - radius, y: centerSourceY - radius, width: radius * 2, height: radius * 2 })
+    }
+
+    function handleUp(upEvent: PointerEvent) {
+      handleMove(upEvent)
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleUp)
+      // Read the just-set live box back out via the setter to commit it exactly once.
+      setLiveBox((current) => {
+        if (current) onResize(current)
+        return null
+      })
+    }
+
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', handleUp)
+  }
+
+  return (
+    <div
+      data-testid="manual-face-marker"
+      data-manual-face-id={face.id}
+      data-excluded={face.excluded}
+      className={`absolute ${disabled ? 'pointer-events-none opacity-60' : ''}`}
+      style={{ left: centerX - size / 2, top: centerY - size / 2, width: size, height: size }}
+    >
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onToggle}
+        aria-label={
+          face.excluded
+            ? 'Manuell hinzugefügtes Gesicht: nicht anonymisiert, anklicken zum Anonymisieren'
+            : 'Manuell hinzugefügtes Gesicht: anonymisiert, anklicken zum Ausnehmen'
+        }
+        className={`h-full w-full rounded-full border-2 border-dashed transition-colors disabled:cursor-not-allowed ${
+          face.excluded
+            ? 'border-secondary bg-secondary/10 hover:bg-secondary/20'
+            : 'border-primary bg-primary/10 hover:bg-primary/20'
+        }`}
+      />
+      <span
+        className={`pointer-events-none absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border border-white text-white shadow ${
+          face.excluded ? 'bg-secondary' : 'bg-primary'
+        }`}
+      >
+        {face.excluded ? <FaceVisibleIcon /> : <FaceHiddenIcon />}
+      </span>
+      <span
+        data-testid="manual-face-resize-handle"
+        onPointerDown={handleResizePointerDown}
+        aria-hidden="true"
+        className="absolute -left-1 -top-1 h-3.5 w-3.5 cursor-nwse-resize rounded-full border border-white bg-ink shadow"
+      />
+      <button
+        type="button"
+        data-testid="manual-face-remove"
+        disabled={disabled}
+        onClick={(event) => {
+          event.stopPropagation()
+          onRemove()
+        }}
+        aria-label="Manuell hinzugefügtes Gesicht entfernen"
+        className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full border border-white bg-ink text-white shadow transition-colors hover:bg-ink/80 disabled:cursor-not-allowed"
+      >
+        <RemoveIcon />
+      </button>
+    </div>
+  )
+}
+
 function Filmstrip({
   items,
   selectedId,
@@ -390,6 +608,21 @@ function Filmstrip({
         </button>
       ))}
     </div>
+  )
+}
+
+function RemoveIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={3}
+      className="h-2 w-2"
+      aria-hidden="true"
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+    </svg>
   )
 }
 

@@ -54,10 +54,35 @@ npm run build   # Typecheck + Produktionsbuild nach dist/
 npm run lint
 ```
 
+Alle wiederkehrenden Befehle (Dev-Server, Lint, Build, Tests, Docker) gibt es auch gebündelt
+über [go-task](https://taskfile.dev) — `task` zeigt die Liste, z. B. `task dev`, `task check`
+(Lint+Build+Tests), `task up` (Docker). Siehe [Taskfile.yml](Taskfile.yml).
+
 Der Build ist eine reine statische Seite (kein Server nötig) und lässt sich z. B. auf
 Netlify, Vercel (static) oder GitHub Pages deployen. Das Erkennungsmodell (`@vladmandic/face-api`
 + Gewichte, ca. 330 KB gzip) wird dynamisch nachgeladen und landet in einem eigenen Chunk, nicht
 im initialen Bundle.
+
+## Docker
+
+```bash
+docker compose up --build   # http://localhost:8080
+```
+
+oder ohne Compose:
+
+```bash
+docker build -t facedrop .
+docker run --rm -p 8080:8080 --read-only --tmpfs /var/cache/nginx --tmpfs /var/run --tmpfs /tmp facedrop
+```
+
+Mehrstufiger Build (Node nur zum Bauen, ausgeliefert wird über
+[`nginxinc/nginx-unprivileged`](https://hub.docker.com/r/nginxinc/nginx-unprivileged) auf Port
+8080, läuft als non-root). [nginx.conf](nginx.conf) setzt eine strikte
+Content-Security-Policy (`default-src 'self'`, kein `connect-src` nach außen) — technisch
+erzwungen, nicht nur behauptet, dass die App mit nichts außer sich selbst spricht. Gegen die
+Policy getestet: die komplette Erkennungspipeline (TensorFlow.js/SSD MobileNet) läuft ohne
+`unsafe-eval` oder sonstige Lockerung.
 
 ## Tests
 

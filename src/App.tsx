@@ -22,9 +22,9 @@ function App() {
       <header className="mb-8 text-center">
         <h1 className="text-3xl font-semibold text-gray-900 dark:text-gray-50">facedrop</h1>
         <p className="mx-auto mt-2 max-w-xl text-gray-600 dark:text-gray-400">
-          Gesichter auf Fotos automatisch unkenntlich machen — bevor sie online gehen. Die
-          Verarbeitung läuft komplett lokal in deinem Browser, es wird kein Bild irgendwohin
-          hochgeladen.
+          Gesichter auf Fotos automatisch unkenntlich machen — bevor sie online gehen.
+          Deine Bilder verlassen deinen Computer nicht (werden nicht hochgeladen).
+          Die Dauer der Verarbeitung ist abhängig von der Leistung deines Computers.
         </p>
       </header>
 

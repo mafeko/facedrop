@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import { ImagePreviewModal } from './ImagePreviewModal'
 import type { QueueItem } from '../types'
 
 interface ImageGridProps {
@@ -5,28 +7,47 @@ interface ImageGridProps {
 }
 
 export function ImageGrid({ items }: ImageGridProps) {
+  const [previewId, setPreviewId] = useState<string | null>(null)
+  // If the previewed item disappears (e.g. the queue was reset), this is
+  // simply null and the modal stops rendering — no extra state to reconcile.
+  const previewItem = items.find((item) => item.id === previewId) ?? null
+
   if (items.length === 0) return null
 
   return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-      {items.map((item) => (
-        <figure
-          key={item.id}
-          data-testid="queue-item"
-          data-status={item.status}
-          className="relative aspect-square overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800"
-        >
-          <img
-            src={item.result?.url ?? item.previewUrl}
-            alt=""
-            className={`h-full w-full object-cover transition-opacity ${
-              item.status === 'processing' ? 'opacity-50' : 'opacity-100'
-            }`}
-          />
-          <StatusOverlay item={item} />
-        </figure>
-      ))}
-    </div>
+    <>
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+        {items.map((item) => (
+          <figure
+            key={item.id}
+            data-testid="queue-item"
+            data-status={item.status}
+            role="button"
+            tabIndex={0}
+            aria-label={`Vorschau von ${item.file.name} anzeigen`}
+            onClick={() => setPreviewId(item.id)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                setPreviewId(item.id)
+              }
+            }}
+            className="relative aspect-square cursor-zoom-in overflow-hidden rounded-xl bg-gray-100 outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:bg-gray-800"
+          >
+            <img
+              src={item.result?.url ?? item.previewUrl}
+              alt=""
+              className={`h-full w-full object-cover transition-opacity ${
+                item.status === 'processing' ? 'opacity-50' : 'opacity-100'
+              }`}
+            />
+            <StatusOverlay item={item} />
+          </figure>
+        ))}
+      </div>
+
+      {previewItem && <ImagePreviewModal item={previewItem} onClose={() => setPreviewId(null)} />}
+    </>
   )
 }
 

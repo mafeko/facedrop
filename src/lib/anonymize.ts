@@ -15,33 +15,59 @@ export const DEFAULT_ANONYMIZE_OPTIONS: AnonymizeOptions = {
 export async function anonymizeImage(file: File, options: AnonymizeOptions): Promise<ProcessedImage> {
   const bitmap = await createImageBitmap(file)
   try {
-    const canvas = document.createElement('canvas')
-    canvas.width = bitmap.width
-    canvas.height = bitmap.height
-    const ctx = getContext(canvas)
-    ctx.drawImage(bitmap, 0, 0)
-
     const faces = await detectFacesMultiScale(bitmap)
-
-    for (const { box: faceBox } of faces) {
-      const box = padBox(faceBox, options.padding, canvas.width, canvas.height)
-      if (options.method === 'pixelate') {
-        pixelateRegion(ctx, bitmap, box)
-      } else {
-        blurRegion(ctx, bitmap, box)
-      }
-    }
-
-    const blob = await canvasToBlob(canvas, file.type)
-    return {
-      fileName: buildOutputFileName(file.name),
-      blob,
-      url: URL.createObjectURL(blob),
-      faceCount: faces.length,
-    }
+    return renderAnonymized(bitmap, file, faces.map((face) => face.box), options)
   } finally {
     bitmap.close()
   }
+}
+
+/**
+ * Re-renders an already-detected set of face boxes with a (possibly different) effect,
+ * without re-running face detection. Used when the user switches pixelate ↔ blur after
+ * a batch has already been processed.
+ */
+export async function reapplyEffect(
+  file: File,
+  faceBoxes: Box[],
+  options: AnonymizeOptions,
+): Promise<ProcessedImage> {
+  const bitmap = await createImageBitmap(file)
+  try {
+    return renderAnonymized(bitmap, file, faceBoxes, options)
+  } finally {
+    bitmap.close()
+  }
+}
+
+function renderAnonymized(
+  bitmap: ImageBitmap,
+  file: File,
+  faceBoxes: Box[],
+  options: AnonymizeOptions,
+): Promise<ProcessedImage> {
+  const canvas = document.createElement('canvas')
+  canvas.width = bitmap.width
+  canvas.height = bitmap.height
+  const ctx = getContext(canvas)
+  ctx.drawImage(bitmap, 0, 0)
+
+  for (const faceBox of faceBoxes) {
+    const box = padBox(faceBox, options.padding, canvas.width, canvas.height)
+    if (options.method === 'pixelate') {
+      pixelateRegion(ctx, bitmap, box)
+    } else {
+      blurRegion(ctx, bitmap, box)
+    }
+  }
+
+  return canvasToBlob(canvas, file.type).then((blob) => ({
+    fileName: buildOutputFileName(file.name),
+    blob,
+    url: URL.createObjectURL(blob),
+    faceCount: faceBoxes.length,
+    faceBoxes,
+  }))
 }
 
 export function padBox(box: Box, padding: number, maxWidth: number, maxHeight: number): Box {

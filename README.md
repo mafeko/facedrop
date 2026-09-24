@@ -1,3 +1,5 @@
+<img src="public/logo.png" alt="facedrop" width="280" />
+
 # facedrop
 
 Gesichter auf Fotos automatisch unkenntlich machen, bevor sie veröffentlicht werden —

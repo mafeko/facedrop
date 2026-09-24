@@ -48,12 +48,12 @@ describe('Dropzone', () => {
     const dropzone = screen.getByRole('button')
 
     fireEvent.dragOver(dropzone)
-    expect(dropzone.className).toContain('border-blue-500')
+    expect(dropzone.className).toContain('border-primary')
 
     const file = makeFile('gruppenfoto.jpg')
     fireEvent.drop(dropzone, { dataTransfer: { files: [file] } })
 
-    expect(dropzone.className).not.toContain('border-blue-500')
+    expect(dropzone.className).not.toContain('border-primary')
   })
 
   it('passes the dropped files through unfiltered (filtering happens upstream)', () => {

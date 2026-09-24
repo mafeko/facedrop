@@ -15,6 +15,9 @@ export interface ProcessedImage {
   blob: Blob
   url: string
   faceCount: number
+  /** Detected face regions (unpadded, in source-image pixel coordinates), kept so a
+   * later effect switch (pixelate ↔ blur) can redraw without re-running detection. */
+  faceBoxes: Box[]
 }
 
 export interface QueueItem {

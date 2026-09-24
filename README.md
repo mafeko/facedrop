@@ -2,161 +2,115 @@
 
 # facedrop
 
-Gesichter auf Fotos automatisch unkenntlich machen, bevor sie veröffentlicht werden —
-gedacht für Kitas, Jugendarbeit und ähnliche Einrichtungen, die Bilder online teilen und
-dabei die Privatsphäre der abgebildeten Personen (v. a. Kinder) wahren möchten.
+> **Note:** The UI is currently in German.
 
-## Kernidee
+Automatically blur or pixelate faces in photos before they get published — built for
+daycare centers, youth organizations, and similar institutions that share photos online
+and want to protect the privacy of the people in them (especially children).
 
-- **Alles läuft lokal im Browser.** Keine Cloud, kein Server-Roundtrip — ein Bild verlässt
-  nie den Rechner. Modell-Gewichte liegen selbst gehostet unter `public/models/face-api`,
-  es gibt keinen CDN-Aufruf zur Laufzeit.
-- **Ensemble-Erkennungspipeline** ([multiScaleDetect.ts](src/lib/multiScaleDetect.ts)): native
-  Browser-`FaceDetector`-API (wo verfügbar) **+** SSD MobileNet V1 (`@vladmandic/face-api`) auf
-  dem Gesamtbild **+** SSD MobileNet auf 4 überlappenden, 2×-gezoomten Bildvierteln — alle
-  Treffer werden per Non-Max-Suppression gemerged. Das holt deutlich mehr kleine/entfernte
-  Gesichter als ein einzelner Durchlauf (siehe Messwerte unter „Tests").
-- **Extrem einfache Bedienung:** Bilder per Drag-and-Drop (oder Dateiauswahl) ablegen,
-  automatische Erkennung + Verpixelung/Weichzeichnung läuft, danach alle anonymisierten
-  Bilder gesammelt als ZIP herunterladen.
-- **Batch-first für den POC:** keine manuelle Nachbearbeitung einzelner Gesichter — das ist
-  bewusst für eine spätere Version vorgesehen.
+On a MacBook with an M1 chip, anonymizing a photo takes **under one second**.
 
-## Tech-Stack
+## How it works
+
+- **Everything runs locally in the browser.** No cloud, no server round-trip — images
+  never leave the machine. Model weights are self-hosted under `public/models/face-api`;
+  nothing is fetched from a CDN at runtime.
+- **Ensemble detection pipeline** ([multiScaleDetect.ts](src/lib/multiScaleDetect.ts)):
+  combines the native browser `FaceDetector` API (where available), SSD MobileNet V1
+  (`@vladmandic/face-api`) on the full image, and SSD MobileNet on four overlapping,
+  2×-zoomed image quadrants. All detections are merged via non-max suppression, which
+  catches far more small or distant faces than a single pass would.
+- **Simple to use:** drop images (or pick files), detection and blurring/pixelation run
+  automatically, then download all anonymized images as a single ZIP.
+- **Batch-first:** no manual per-face correction — that's planned for a later version.
+
+## Tech stack
 
 - Vite + React + TypeScript
 - Tailwind CSS 4
-- `@vladmandic/face-api` (MIT) — SSD MobileNet V1 für Gesichtserkennung, läuft auf TensorFlow.js
-  (Backend-Wahl: TF.js-Standard, i. d. R. WebGL mit CPU-Fallback — siehe Hinweis unten)
-- `jszip` für den gesammelten Download
+- `@vladmandic/face-api` (MIT) — SSD MobileNet V1 for face detection, running on
+  TensorFlow.js (default backend, typically WebGL with a CPU fallback)
+- `jszip` for the collected download
 
-### Hintergrund zur Erkennungs-Architektur
+## Development
 
-Ein einzelner Erkennungsdurchlauf mit einem leichtgewichtigen Modell auf dem Gesamtbild
-übersieht in eigenen Tests zuverlässig kleine/entfernte Gesichter (s. Abschnitt „Tests"). Das
-Engine-Ensemble + Multi-Scale-Tiling in dieser Pipeline ist eine unabhängige Implementierung,
-die genau dieses Problem adressiert.
-
-**Hinweis zur Backend-Wahl:** `@vladmandic/face-api` läuft auf TensorFlow.js ohne erzwungenes
-Backend, i. d. R. also auf WebGL (GPU) statt reinem WebAssembly. Ursprünglich war "läuft
-komplett als WASM" spezifiziert; hier wurde bewusst der TF.js-Standardpfad belassen statt
-zusätzlich ein WASM-Backend zu erzwingen (zusätzlicher Aufwand ohne funktionalen Gewinn). Die
-eigentliche Anforderung — Bilder verlassen nie das Gerät — bleibt davon unberührt, WebGL läuft
-genauso lokal wie WASM.
-
-## Entwicklung
+All commands run through [go-task](https://taskfile.dev) — run `task` (no arguments) to
+list them. See [Taskfile.yml](Taskfile.yml) for the full list.
 
 ```bash
-npm install
-npm run dev
+task install   # npm install
+task dev       # start the Vite dev server
 ```
 
 ```bash
-npm run build   # Typecheck + Produktionsbuild nach dist/
-npm run lint
+task build   # typecheck + production build into dist/
+task lint    # run ESLint
+task check   # lint + build + all tests — the full pre-push gate
 ```
 
-Alle wiederkehrenden Befehle (Dev-Server, Lint, Build, Tests, Docker) gibt es auch gebündelt
-über [go-task](https://taskfile.dev) — `task` zeigt die Liste, z. B. `task dev`, `task check`
-(Lint+Build+Tests), `task up` (Docker). Siehe [Taskfile.yml](Taskfile.yml).
-
-Der Build ist eine reine statische Seite (kein Server nötig) und lässt sich z. B. auf
-Netlify, Vercel (static) oder GitHub Pages deployen. Das Erkennungsmodell (`@vladmandic/face-api`
-+ Gewichte, ca. 330 KB gzip) wird dynamisch nachgeladen und landet in einem eigenen Chunk, nicht
-im initialen Bundle.
+The build is a static site (no server required) and can be deployed to Netlify, Vercel
+(static), GitHub Pages, etc. The detection model (`@vladmandic/face-api` + weights, ~330 KB
+gzipped) is lazy-loaded into its own chunk, not the initial bundle.
 
 ## Docker
 
 ```bash
-docker compose up --build   # http://localhost:8080
+task up     # build and run the production container — http://localhost:8080
+task down   # stop it
 ```
 
-oder ohne Compose:
+or just build the image with `task docker`.
 
-```bash
-docker build -t facedrop .
-docker run --rm -p 8080:8080 --read-only --tmpfs /var/cache/nginx --tmpfs /var/run --tmpfs /tmp facedrop
-```
-
-Mehrstufiger Build (Node nur zum Bauen, ausgeliefert wird über
-[`nginxinc/nginx-unprivileged`](https://hub.docker.com/r/nginxinc/nginx-unprivileged) auf Port
-8080, läuft als non-root). [nginx.conf](nginx.conf) setzt eine strikte
-Content-Security-Policy (`default-src 'self'`, kein `connect-src` nach außen) — technisch
-erzwungen, nicht nur behauptet, dass die App mit nichts außer sich selbst spricht. Gegen die
-Policy getestet: die komplette Erkennungspipeline (TensorFlow.js/SSD MobileNet) läuft ohne
-`unsafe-eval` oder sonstige Lockerung.
+Multi-stage build (Node only for building; served via
+[`nginxinc/nginx-unprivileged`](https://hub.docker.com/r/nginxinc/nginx-unprivileged) on
+port 8080, running as non-root). [nginx.conf](nginx.conf) sets a strict Content-Security-Policy
+(`default-src 'self'`, no external `connect-src`) — enforced technically, not just claimed.
+The full detection pipeline (TensorFlow.js / SSD MobileNet) runs against this policy without
+`unsafe-eval` or any other relaxation.
 
 ## Tests
 
 ```bash
-npm test           # Unit-/Komponententests (Vitest + React Testing Library)
-npm run test:watch
-npm run test:e2e    # End-to-End-Tests im echten Browser (Playwright)
+task test   # unit/component tests (Vitest + React Testing Library)
+task e2e    # end-to-end tests in a real browser (Playwright)
 ```
 
-Die Unit-Tests decken reine Logik ab (Box-Padding-Geometrie, IoU/Non-Max-Suppression,
-Dateinamens- und ZIP-Namenskollisionen) sowie die Dropzone-Komponente.
+Unit tests cover pure logic (box-padding geometry, IoU/non-max suppression, filename and
+ZIP name collisions) and the dropzone component.
 
-Die E2E-Tests starten die echte App (`npm run dev`) in einem echten Chromium und laden
-tatsächliche Testfotos hoch — die komplette Pipeline (Gesichtserkennung, Verpixeln/
-Weichzeichnen, ZIP-Download) läuft dabei unverändert wie im Browser der Nutzerin. Alle
-Testbilder unter `tests/fixtures/images/` sind gemeinfrei (siehe
-[NOTICE.md](tests/fixtures/images/NOTICE.md)). **Laufen bewusst seriell** (`workers: 1` in
-[playwright.config.ts](playwright.config.ts)): mehrere TensorFlow.js-Erkenner parallel auf
-derselben GPU haben sich gegenseitig so stark ausgebremst, dass Tests am Timeout scheiterten,
-obwohl eine einzelne Erkennung unter einer Sekunde dauert — ein Testinfrastruktur-Thema, kein
-Pipeline-Bug.
+E2E tests start the real app (`task dev`) in real Chromium and upload actual test
+photos — the full pipeline (face detection, blurring/pixelation, ZIP download) runs
+unchanged, just like in a user's browser. All test images under
+`tests/fixtures/images/` are public domain (see
+[NOTICE.md](tests/fixtures/images/NOTICE.md)). Tests run serially
+(`workers: 1` in [playwright.config.ts](playwright.config.ts)) to avoid multiple
+TensorFlow.js detectors contending for the same GPU.
 
-### Erkenntnisse aus den Tests
+## Feature scope (POC)
 
-Die erste Implementierung nutzte [MediaPipe Tasks Vision](https://ai.google.dev/edge/mediapipe/solutions/vision/face_detector)
-mit dem `BlazeFace short-range`-Modell (WASM, ein einzelner Durchlauf auf dem Gesamtbild).
-Getestet an einem historischen Gruppenfoto (Solvay-Konferenz 1927, 29 Personen): selbst bei
-voller Auflösung und stark abgesenkter Konfidenzschwelle wurde nur eine einzige Person erkannt.
-Eine niedrigere Schwelle verbesserte zwar die Erkennung entfernter Gesichter, erzeugte aber auch
-neue Fehlalarme (die Erde auf einem Foto ganz ohne Personen wurde als Gesicht erkannt) — bei
-einem POC ohne manuelle Korrektur ein schlechter Tausch.
+- Multiple images at once via drag-and-drop or file picker
+- Automatic face detection (ensemble + multi-scale, see above), pixelation or blur
+  (toggle applies globally)
+- Per-image progress and error handling instead of a full-batch abort
+- Batch download of all results as a ZIP
+- Supported formats: JPEG, PNG, WebP
 
-Die jetzige Ensemble-Pipeline (native API + SSD MobileNet V1 + Multi-Scale-Tiling) wurde direkt
-gegen dieselben Testfotos gemessen:
+## Out of scope for the POC
 
-| Testfoto | Alt (BlazeFace, 1 Durchlauf) | Neu (Ensemble + Tiling) |
-| --- | --- | --- |
-| [Einstein-Porträt](tests/fixtures/images/einstein.jpg) (1 Gesicht) | 1/1 | 1/1, Konfidenz 0.95 |
-| [Apollo-11-Crew](tests/fixtures/images/apollo11-crew.jpg) (3 Gesichter) | 2/3, Konfidenz 0.60–0.62 | 3/3, Konfidenz 0.98–0.99 |
-| Solvay-Konferenz 1927 (29 Gesichter, historisch) | 0–1/29 | 28–30/29 |
-| [Erde ohne Personen](tests/fixtures/images/no-face-earth.jpg) (0 Gesichter, Negativtest) | 0/0 | 0/0 |
+- Manual correction/addition of face boxes — planned for a later version
+- Text/license-plate anonymization — outside the original "faces" scope
+- HEIC support
+- Offline capability as an installable PWA (a natural next step, since everything
+  already runs locally)
 
-Der Sprung beim Solvay-Foto (0–1 → 28–30 von 29) belegt, dass die Ensemble+Tiling-Architektur —
-nicht ein einzelnes "besseres" Modell — der entscheidende Faktor für gute Erkennung ist. Pro
-Bild braucht die neue Pipeline ca. 150–700 ms (überwiegend beim ersten Aufruf durch
-TF.js-Modell-Kompilierung), keine spürbare Auswirkung auf die Batch-Performance.
+## Known limitations
 
-## Funktionsumfang (POC)
+- No HEIC (the default iPhone format); JPEG/PNG/WebP are recommended.
+- The native `FaceDetector` API is only available on a few platforms (mainly Android
+  Chrome); everywhere else, detection relies solely on SSD MobileNet V1 — the ensemble
+  pipeline still works, just with one fewer detection path.
+- First-use model download is about 5.4 MB (one-time, then cached by the browser).
 
-- Mehrere Bilder gleichzeitig per Drag-and-Drop oder Dateiauswahl
-- Automatische Gesichtserkennung (Ensemble + Multi-Scale, s. o.), Verpixeln oder
-  Weichzeichnen (global umschaltbar)
-- Fortschrittsanzeige pro Bild, Fehler pro Bild statt Komplettabbruch
-- Sammel-Download aller Ergebnisse als ZIP
-- Unterstützte Formate: JPEG, PNG, WebP
-
-## Nicht im Scope des POC
-
-- Manuelle Korrektur/Ergänzung von Gesichtsboxen — bewusst für eine spätere Version vorgesehen
-- Texterkennung/Kennzeichen-Anonymisierung — außerhalb des ursprünglichen Scopes "Gesichter"
-- HEIC-Unterstützung
-- Offline-Fähigkeit als installierbare PWA (naheliegender nächster Schritt, da bereits alles
-  lokal läuft)
-
-## Bekannte Grenzen
-
-- Kein HEIC (iPhone-Standardformat); JPEG/PNG/WebP werden empfohlen.
-- Die native `FaceDetector`-API ist nur auf wenigen Plattformen verfügbar (v. a. Android
-  Chrome); überall sonst läuft ausschließlich SSD MobileNet V1 — die Ensemble-Pipeline
-  funktioniert also auch ohne sie, nur mit einem Erkennungspfad weniger.
-- Modell-Download beim ersten Gebrauch ca. 5,4 MB (einmalig, danach Browser-Cache).
-
-## Lizenz
+## License
 
 [MIT](LICENSE)

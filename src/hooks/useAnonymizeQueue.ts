@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { anonymizeImage, DEFAULT_ANONYMIZE_OPTIONS, reapplyEffect } from '../lib/anonymize'
+import { isAcceptedFile } from '../lib/heic'
 import type { AnonymizeMethod, QueueItem } from '../types'
-
-const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
 export function useAnonymizeQueue(method: AnonymizeMethod) {
   const [items, setItems] = useState<QueueItem[]>([])
@@ -19,7 +18,7 @@ export function useAnonymizeQueue(method: AnonymizeMethod) {
   }, [items])
 
   const addFiles = useCallback((files: File[]) => {
-    const accepted = files.filter((file) => ACCEPTED_TYPES.includes(file.type))
+    const accepted = files.filter(isAcceptedFile)
     if (accepted.length === 0) return
     const newItems: QueueItem[] = accepted.map((file) => ({
       id: crypto.randomUUID(),

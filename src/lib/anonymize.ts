@@ -1,3 +1,4 @@
+import { convertHeicToJpeg, isHeicFile } from './heic'
 import { detectFacesMultiScale } from './multiScaleDetect'
 import type { AnonymizeMethod, Box, ProcessedImage } from '../types'
 
@@ -13,7 +14,7 @@ export const DEFAULT_ANONYMIZE_OPTIONS: AnonymizeOptions = {
 }
 
 export async function anonymizeImage(file: File, options: AnonymizeOptions): Promise<ProcessedImage> {
-  const bitmap = await createImageBitmap(file)
+  const bitmap = await loadBitmap(file)
   try {
     const faces = await detectFacesMultiScale(bitmap)
     return renderAnonymized(bitmap, file, faces.map((face) => face.box), options)
@@ -32,12 +33,21 @@ export async function reapplyEffect(
   faceBoxes: Box[],
   options: AnonymizeOptions,
 ): Promise<ProcessedImage> {
-  const bitmap = await createImageBitmap(file)
+  const bitmap = await loadBitmap(file)
   try {
     return renderAnonymized(bitmap, file, faceBoxes, options)
   } finally {
     bitmap.close()
   }
+}
+
+/** HEIC/HEIF has no browser-native decode outside Safari, so it's converted to JPEG first. */
+async function loadBitmap(file: File): Promise<ImageBitmap> {
+  if (isHeicFile(file)) {
+    const jpegBlob = await convertHeicToJpeg(file)
+    return createImageBitmap(jpegBlob)
+  }
+  return createImageBitmap(file)
 }
 
 function renderAnonymized(

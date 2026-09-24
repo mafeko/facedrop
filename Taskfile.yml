@@ -1,0 +1,65 @@
+version: '3'
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+
+  install:
+    desc: Install dependencies
+    cmds:
+      - npm install
+
+  dev:
+    desc: Start the Vite dev server
+    cmds:
+      - npm run dev
+
+  lint:
+    desc: Run ESLint
+    cmds:
+      - npm run lint
+
+  build:
+    desc: Typecheck and build for production (dist/)
+    cmds:
+      - npm run build
+
+  test:
+    desc: Run unit tests (Vitest)
+    cmds:
+      - npm test
+
+  e2e:
+    desc: Run end-to-end tests against a real browser (Playwright)
+    cmds:
+      - npm run test:e2e
+
+  check:
+    desc: Lint, build, and run all tests — the full pre-push gate
+    cmds:
+      - task: lint
+      - task: build
+      - task: test
+      - task: e2e
+
+  docker:
+    desc: Build the production Docker image
+    cmds:
+      - docker build -t facedrop .
+
+  up:
+    desc: Build and run the production container (docker compose, :8080)
+    cmds:
+      - docker compose up --build
+
+  down:
+    desc: Stop the production container
+    cmds:
+      - docker compose down
+
+  clean:
+    desc: Remove build and test output
+    cmds:
+      - rm -rf dist test-results playwright-report

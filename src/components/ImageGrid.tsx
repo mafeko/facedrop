@@ -32,7 +32,7 @@ export function ImageGrid({ items }: ImageGridProps) {
                 setPreviewId(item.id)
               }
             }}
-            className="relative aspect-square cursor-zoom-in overflow-hidden rounded-xl bg-gray-100 outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:bg-gray-800"
+            className="relative aspect-square cursor-zoom-in overflow-hidden rounded-xl bg-surface-muted outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
             <img
               src={item.result?.url ?? item.previewUrl}
@@ -62,7 +62,7 @@ function StatusOverlay({ item }: { item: QueueItem }) {
   if (item.status === 'error') {
     return (
       <div
-        className="absolute inset-0 flex items-center justify-center bg-red-900/60 p-2 text-center text-xs text-white"
+        className="absolute inset-0 flex items-center justify-center bg-danger/80 p-2 text-center text-xs text-white"
         title={item.error}
       >
         Fehler

@@ -79,6 +79,26 @@ test('Alle herunterladen erzeugt eine ZIP-Datei mit allen anonymisierten Bildern
   expect(downloadPath).toBeTruthy()
 })
 
+test('Effekt-Wechsel nach der Verarbeitung wendet ihn auf alle Bilder an, ohne neu zu erkennen', async ({
+  page,
+}) => {
+  await page.getByTestId('dropzone-input').setInputFiles([EINSTEIN, GROUP_PHOTO])
+  await expect(page.getByTestId('progress-summary')).toHaveAttribute('data-done-count', '2')
+
+  const items = page.getByTestId('queue-item')
+  const firstResultSrc = await items.nth(0).locator('img').getAttribute('src')
+
+  await page.getByTestId('method-blur').click()
+  await expect(page.getByTestId('progress-summary')).toHaveText('Effekt wird für alle Bilder aktualisiert …')
+  await expect(page.getByTestId('progress-summary')).toHaveText('2 von 2 Bildern anonymisiert')
+
+  // The image was redrawn (new blob URL) …
+  await expect(items.nth(0).locator('img')).not.toHaveAttribute('src', firstResultSrc ?? '')
+  // … but the same faces were reused rather than re-detected.
+  await expect(items.nth(0).getByTestId('face-count')).toHaveAttribute('data-face-count', '1')
+  await expect(items.nth(1).getByTestId('face-count')).toHaveAttribute('data-face-count', '3')
+})
+
 test('Zurücksetzen leert die Warteschlange wieder', async ({ page }) => {
   await page.getByTestId('dropzone-input').setInputFiles(EINSTEIN)
   await expect(page.getByTestId('queue-item')).toHaveAttribute('data-status', 'done')

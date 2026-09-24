@@ -42,7 +42,7 @@ export function ImagePreviewModal({ item, onClose }: ImagePreviewModalProps) {
       <img
         src={item.result?.url ?? item.previewUrl}
         alt=""
-        className="max-h-[80vh] max-w-full rounded-lg object-contain shadow-2xl"
+        className="max-h-[80vh] max-w-full rounded-2xl object-contain shadow-2xl"
       />
 
       <p className="max-w-full truncate px-2 text-center text-sm text-gray-200">

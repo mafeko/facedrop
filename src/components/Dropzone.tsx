@@ -31,15 +31,13 @@ export function Dropzone({ onFiles }: DropzoneProps) {
       onDrop={handleDrop}
       className={`flex cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed p-12 text-center transition-colors ${
         isDragActive
-          ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30'
-          : 'border-gray-300 hover:border-gray-400 dark:border-gray-700 dark:hover:border-gray-600'
+          ? 'border-primary bg-primary-soft'
+          : 'border-border-strong hover:border-ink-muted'
       }`}
     >
       <UploadIcon />
-      <p className="text-lg font-medium text-gray-800 dark:text-gray-100">
-        Bilder hierher ziehen
-      </p>
-      <p className="text-sm text-gray-500 dark:text-gray-400">
+      <p className="text-lg font-medium text-ink">Bilder hierher ziehen</p>
+      <p className="text-sm text-ink-muted">
         oder klicken, um Dateien auszuwählen — beliebig viele auf einmal
       </p>
       <input
@@ -69,7 +67,7 @@ function UploadIcon() {
       fill="none"
       stroke="currentColor"
       strokeWidth={1.5}
-      className="h-10 w-10 text-gray-400"
+      className="h-10 w-10 text-ink-muted"
       aria-hidden="true"
     >
       <path

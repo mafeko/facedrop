@@ -27,4 +27,6 @@ export interface QueueItem {
   status: ImageStatus
   result?: ProcessedImage
   error?: string
+  /** Indices into `result.faceBoxes` that are excluded from anonymization (kept visible). */
+  excludedFaceIndices: number[]
 }

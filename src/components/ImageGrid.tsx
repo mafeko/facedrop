@@ -4,9 +4,10 @@ import type { QueueItem } from '../types'
 
 interface ImageGridProps {
   items: QueueItem[]
+  onEditManually: (itemId: string) => void
 }
 
-export function ImageGrid({ items }: ImageGridProps) {
+export function ImageGrid({ items, onEditManually }: ImageGridProps) {
   const [previewId, setPreviewId] = useState<string | null>(null)
   // If the previewed item disappears (e.g. the queue was reset), this is
   // simply null and the modal stops rendering — no extra state to reconcile.
@@ -46,7 +47,16 @@ export function ImageGrid({ items }: ImageGridProps) {
         ))}
       </div>
 
-      {previewItem && <ImagePreviewModal item={previewItem} onClose={() => setPreviewId(null)} />}
+      {previewItem && (
+        <ImagePreviewModal
+          item={previewItem}
+          onClose={() => setPreviewId(null)}
+          onEditManually={() => {
+            onEditManually(previewItem.id)
+            setPreviewId(null)
+          }}
+        />
+      )}
     </>
   )
 }

@@ -4,9 +4,12 @@ import type { QueueItem } from '../types'
 interface ImagePreviewModalProps {
   item: QueueItem
   onClose: () => void
+  onEditManually: () => void
 }
 
-export function ImagePreviewModal({ item, onClose }: ImagePreviewModalProps) {
+export function ImagePreviewModal({ item, onClose, onEditManually }: ImagePreviewModalProps) {
+  const canEditManually = item.status === 'done' && (item.result?.faceCount ?? 0) > 0
+
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') onClose()
@@ -42,7 +45,7 @@ export function ImagePreviewModal({ item, onClose }: ImagePreviewModalProps) {
       <img
         src={item.result?.url ?? item.previewUrl}
         alt=""
-        className="max-h-[80vh] max-w-full rounded-2xl object-contain shadow-2xl"
+        className="max-h-[70vh] max-w-full rounded-2xl object-contain shadow-2xl"
       />
 
       <p className="max-w-full truncate px-2 text-center text-sm text-gray-200">
@@ -56,7 +59,37 @@ export function ImagePreviewModal({ item, onClose }: ImagePreviewModalProps) {
         {item.status === 'processing' && <span className="text-gray-400"> · wird verarbeitet …</span>}
         {item.status === 'error' && <span className="text-red-400"> · Fehler: {item.error}</span>}
       </p>
+
+      {canEditManually && (
+        <button
+          type="button"
+          data-testid="preview-edit-manually"
+          onClick={(event) => {
+            event.stopPropagation()
+            onEditManually()
+          }}
+          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-primary-hover"
+        >
+          <PencilIcon />
+          Manuell bearbeiten
+        </button>
+      )}
     </div>
+  )
+}
+
+function PencilIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      className="h-4 w-4"
+      aria-hidden="true"
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="m16.5 3.5 4 4L7 21l-4.5 1L4 17.5 16.5 3.5Z" />
+    </svg>
   )
 }
 

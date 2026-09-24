@@ -112,6 +112,58 @@ test('Effekt-Wechsel nach der Verarbeitung wendet ihn auf alle Bilder an, ohne n
   await expect(items.nth(1).getByTestId('face-count')).toHaveAttribute('data-face-count', '3')
 })
 
+test('Manuelle Bearbeitung zeigt Gesichts-Marker, die einzeln von der Anonymisierung ausgenommen werden können', async ({
+  page,
+}) => {
+  await page.getByTestId('dropzone-input').setInputFiles(EINSTEIN)
+  await expect(page.getByTestId('queue-item')).toHaveAttribute('data-status', 'done')
+
+  await page.getByTestId('manual-edit-toggle').click()
+  await expect(page.getByTestId('edit-area').locator('img')).toBeVisible()
+
+  const marker = page.getByTestId('face-marker')
+  await expect(marker).toHaveAttribute('data-excluded', 'false')
+  const srcBefore = await page.getByTestId('edit-area').locator('img').getAttribute('src')
+
+  await marker.click()
+
+  await expect(marker).toHaveAttribute('data-excluded', 'true')
+  await expect(page.getByTestId('edit-area').locator('img')).not.toHaveAttribute('src', srcBefore ?? '')
+
+  // Toggling back re-applies the anonymization to that same face.
+  await marker.click()
+  await expect(marker).toHaveAttribute('data-excluded', 'false')
+})
+
+test('"Manuell bearbeiten" in der Vorschau öffnet die manuelle Bearbeitung direkt mit diesem Bild', async ({
+  page,
+}) => {
+  await page.getByTestId('dropzone-input').setInputFiles([EINSTEIN, GROUP_PHOTO])
+  await expect(page.getByTestId('progress-summary')).toHaveAttribute('data-done-count', '2')
+
+  // Open the second image's preview and jump straight into manual editing from there.
+  await page.getByTestId('queue-item').nth(1).click()
+  await expect(page.getByTestId('preview-modal')).toBeVisible()
+  await page.getByTestId('preview-edit-manually').click()
+
+  await expect(page.getByTestId('preview-modal')).toHaveCount(0)
+  await expect(page.getByTestId('edit-area').locator('img')).toBeVisible()
+  await expect(page.getByTestId('face-marker')).toHaveCount(3)
+  await expect(page.getByTestId('filmstrip-item').nth(1)).toHaveAttribute('class', /border-primary/)
+})
+
+test('Mehr als 25 Bilder auf einmal werden auf die ersten 25 gekürzt, mit Hinweis', async ({ page }) => {
+  const thirtyFiles = Array.from({ length: 30 }, () => NO_FACE)
+  await page.getByTestId('dropzone-input').setInputFiles(thirtyFiles)
+
+  await expect(page.getByTestId('queue-item')).toHaveCount(25)
+  await expect(page.getByTestId('progress-summary')).toHaveAttribute('data-total-count', '25')
+  await expect(page.getByTestId('limit-notice')).toContainText('25')
+
+  await page.getByTestId('limit-notice-dismiss').click()
+  await expect(page.getByTestId('limit-notice')).toHaveCount(0)
+})
+
 test('Zurücksetzen leert die Warteschlange wieder', async ({ page }) => {
   await page.getByTestId('dropzone-input').setInputFiles(EINSTEIN)
   await expect(page.getByTestId('queue-item')).toHaveAttribute('data-status', 'done')

@@ -13,11 +13,17 @@ export const DEFAULT_ANONYMIZE_OPTIONS: AnonymizeOptions = {
   padding: 0.35,
 }
 
-export async function anonymizeImage(file: File, options: AnonymizeOptions): Promise<ProcessedImage> {
+const NO_EXCLUSIONS: ReadonlySet<number> = new Set()
+
+export async function anonymizeImage(
+  file: File,
+  options: AnonymizeOptions,
+  excludedIndices: ReadonlySet<number> = NO_EXCLUSIONS,
+): Promise<ProcessedImage> {
   const bitmap = await loadBitmap(file)
   try {
     const faces = await detectFacesMultiScale(bitmap)
-    return renderAnonymized(bitmap, file, faces.map((face) => face.box), options)
+    return renderAnonymized(bitmap, file, faces.map((face) => face.box), options, excludedIndices)
   } finally {
     bitmap.close()
   }
@@ -26,16 +32,17 @@ export async function anonymizeImage(file: File, options: AnonymizeOptions): Pro
 /**
  * Re-renders an already-detected set of face boxes with a (possibly different) effect,
  * without re-running face detection. Used when the user switches pixelate ↔ blur after
- * a batch has already been processed.
+ * a batch has already been processed, or excludes individual faces via manual editing.
  */
 export async function reapplyEffect(
   file: File,
   faceBoxes: Box[],
   options: AnonymizeOptions,
+  excludedIndices: ReadonlySet<number> = NO_EXCLUSIONS,
 ): Promise<ProcessedImage> {
   const bitmap = await loadBitmap(file)
   try {
-    return renderAnonymized(bitmap, file, faceBoxes, options)
+    return renderAnonymized(bitmap, file, faceBoxes, options, excludedIndices)
   } finally {
     bitmap.close()
   }
@@ -55,6 +62,7 @@ function renderAnonymized(
   file: File,
   faceBoxes: Box[],
   options: AnonymizeOptions,
+  excludedIndices: ReadonlySet<number>,
 ): Promise<ProcessedImage> {
   const canvas = document.createElement('canvas')
   canvas.width = bitmap.width
@@ -62,7 +70,8 @@ function renderAnonymized(
   const ctx = getContext(canvas)
   ctx.drawImage(bitmap, 0, 0)
 
-  for (const faceBox of faceBoxes) {
+  for (const [index, faceBox] of faceBoxes.entries()) {
+    if (excludedIndices.has(index)) continue
     const box = padBox(faceBox, options.padding, canvas.width, canvas.height)
     if (options.method === 'pixelate') {
       pixelateRegion(ctx, bitmap, box)

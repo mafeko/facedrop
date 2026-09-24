@@ -6,6 +6,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const fixtures = (name: string) => path.join(__dirname, '..', 'fixtures', 'images', name)
 
 const EINSTEIN = fixtures('einstein.jpg')
+const EINSTEIN_HEIC = fixtures('einstein.heic')
 const MONA_LISA = fixtures('mona-lisa.jpg')
 const GROUP_PHOTO = fixtures('apollo11-crew.jpg')
 const NO_FACE = fixtures('no-face-earth.jpg')
@@ -53,6 +54,18 @@ test('ein Bild ohne Gesicht wird trotzdem fertig verarbeitet, statt abzustürzen
   const item = page.getByTestId('queue-item')
   await expect(item).toHaveAttribute('data-status', 'done')
   await expect(item.getByTestId('face-count')).toHaveAttribute('data-face-count', '0')
+  await expect(page.getByTestId('download-all')).toBeEnabled()
+})
+
+test('HEIC-Fotos werden über den WASM-Decoder erkannt und verpixelt (Chromium hat kein natives HEIC)', async ({
+  page,
+}) => {
+  await page.getByTestId('dropzone-input').setInputFiles(EINSTEIN_HEIC)
+
+  const item = page.getByTestId('queue-item')
+  await expect(item).toHaveAttribute('data-status', 'done', { timeout: 15_000 })
+
+  await expect(item.getByTestId('face-count')).toHaveAttribute('data-face-count', '1')
   await expect(page.getByTestId('download-all')).toBeEnabled()
 })
 

@@ -93,19 +93,20 @@ TensorFlow.js detectors contending for the same GPU.
   (toggle applies globally)
 - Per-image progress and error handling instead of a full-batch abort
 - Batch download of all results as a ZIP
-- Supported formats: JPEG, PNG, WebP
+- Supported formats: JPEG, PNG, WebP, HEIC/HEIF (the default iPhone format — decoded
+  client-side via a bundled, lazy-loaded WASM build of libheif,
+  [heic2any](https://github.com/alexcorvi/heic2any); stays fully local, no upload, no
+  CDN call)
 
 ## Out of scope for the POC
 
 - Manual correction/addition of face boxes — planned for a later version
 - Text/license-plate anonymization — outside the original "faces" scope
-- HEIC support
 - Offline capability as an installable PWA (a natural next step, since everything
   already runs locally)
 
 ## Known limitations
 
-- No HEIC (the default iPhone format); JPEG/PNG/WebP are recommended.
 - The native `FaceDetector` API is only available on a few platforms (mainly Android
   Chrome); everywhere else, detection relies solely on SSD MobileNet V1 — the ensemble
   pipeline still works, just with one fewer detection path.

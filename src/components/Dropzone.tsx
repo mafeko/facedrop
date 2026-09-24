@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import type { DragEvent } from 'react'
+import { ACCEPT_ATTR } from '../lib/heic'
 
 interface DropzoneProps {
   onFiles: (files: File[]) => void
@@ -44,7 +45,7 @@ export function Dropzone({ onFiles }: DropzoneProps) {
         ref={inputRef}
         data-testid="dropzone-input"
         type="file"
-        accept="image/jpeg,image/png,image/webp"
+        accept={ACCEPT_ATTR}
         multiple
         className="hidden"
         // The input sits inside the div that opens it via inputRef.click(),

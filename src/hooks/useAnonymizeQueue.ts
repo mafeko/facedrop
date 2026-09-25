@@ -9,19 +9,31 @@ export const MAX_IMAGES = 25
 /**
  * Builds the full box list (detected + manual) and the exclusion set (by index into that
  * combined list) for a single render call. Manual faces are appended after detected ones,
- * so their combined index is always `detectedBoxes.length + <their position>`.
+ * so their combined index is always `detectedBoxes.length + <their position>`. Detected
+ * boxes are swapped for their resize override where one exists, and any removed detected
+ * face is folded into the exclusion set so it's never anonymized (its marker is simply
+ * hidden in the UI, rather than filtered out of this array, to keep indices stable).
  */
 function buildCombinedRenderInputs(
   detectedBoxes: Box[],
   excludedFaceIndices: number[],
+  removedFaceIndices: number[],
+  faceBoxOverrides: Record<number, Box>,
   manualFaceBoxes: ManualFace[],
 ): { boxes: Box[]; excluded: Set<number> } {
-  const boxes = [...detectedBoxes, ...manualFaceBoxes.map((face) => face.box)]
+  const effectiveDetectedBoxes = detectedBoxes.map((box, i) => faceBoxOverrides[i] ?? box)
+  const boxes = [...effectiveDetectedBoxes, ...manualFaceBoxes.map((face) => face.box)]
   const excluded = new Set(excludedFaceIndices)
+  for (const index of removedFaceIndices) excluded.add(index)
   manualFaceBoxes.forEach((face, i) => {
     if (face.excluded) excluded.add(detectedBoxes.length + i)
   })
   return { boxes, excluded }
+}
+
+/** Detected faces still counted, i.e. not dismissed as false positives. */
+function activeDetectedCount(detectedBoxes: Box[], removedFaceIndices: number[]): number {
+  return detectedBoxes.length - removedFaceIndices.length
 }
 
 export function useAnonymizeQueue(method: AnonymizeMethod) {
@@ -64,6 +76,8 @@ export function useAnonymizeQueue(method: AnonymizeMethod) {
       previewUrl: URL.createObjectURL(file),
       status: 'queued',
       excludedFaceIndices: [],
+      removedFaceIndices: [],
+      faceBoxOverrides: {},
       manualFaceBoxes: [],
     }))
     setItems((prev) => [...prev, ...newItems])
@@ -133,6 +147,8 @@ export function useAnonymizeQueue(method: AnonymizeMethod) {
               const { boxes, excluded } = buildCombinedRenderInputs(
                 detectedBoxes,
                 item.excludedFaceIndices,
+                item.removedFaceIndices,
+                item.faceBoxOverrides,
                 item.manualFaceBoxes,
               )
               const result = await reapplyEffect(
@@ -145,7 +161,11 @@ export function useAnonymizeQueue(method: AnonymizeMethod) {
               // Keep faceBoxes/faceCount reflecting only the detected faces — the combined
               // list above is transient, just for this render call.
               updateItem(item.id, {
-                result: { ...result, faceBoxes: detectedBoxes, faceCount: detectedBoxes.length },
+                result: {
+                  ...result,
+                  faceBoxes: detectedBoxes,
+                  faceCount: activeDetectedCount(detectedBoxes, item.removedFaceIndices),
+                },
               })
             } catch {
               // Keep the previous result rather than losing an already-successful
@@ -164,6 +184,7 @@ export function useAnonymizeQueue(method: AnonymizeMethod) {
       const item = itemsRef.current.find((entry) => entry.id === itemId)
       if (!item || item.status !== 'done' || !item.result) return
       if (facesUpdatingRef.current.has(itemId)) return
+      if (item.removedFaceIndices.includes(faceIndex)) return
 
       const excludedSet = new Set(item.excludedFaceIndices)
       if (excludedSet.has(faceIndex)) excludedSet.delete(faceIndex)
@@ -174,6 +195,8 @@ export function useAnonymizeQueue(method: AnonymizeMethod) {
       const { boxes, excluded } = buildCombinedRenderInputs(
         detectedBoxes,
         excludedFaceIndices,
+        item.removedFaceIndices,
+        item.faceBoxOverrides,
         item.manualFaceBoxes,
       )
 
@@ -190,7 +213,11 @@ export function useAnonymizeQueue(method: AnonymizeMethod) {
           )
           URL.revokeObjectURL(item.result!.url)
           updateItem(itemId, {
-            result: { ...result, faceBoxes: detectedBoxes, faceCount: detectedBoxes.length },
+            result: {
+              ...result,
+              faceBoxes: detectedBoxes,
+              faceCount: activeDetectedCount(detectedBoxes, item.removedFaceIndices),
+            },
             excludedFaceIndices,
           })
         } catch {
@@ -220,6 +247,8 @@ export function useAnonymizeQueue(method: AnonymizeMethod) {
       const { boxes, excluded } = buildCombinedRenderInputs(
         detectedBoxes,
         item.excludedFaceIndices,
+        item.removedFaceIndices,
+        item.faceBoxOverrides,
         manualFaceBoxes,
       )
 
@@ -236,7 +265,11 @@ export function useAnonymizeQueue(method: AnonymizeMethod) {
           )
           URL.revokeObjectURL(item.result!.url)
           updateItem(itemId, {
-            result: { ...result, faceBoxes: detectedBoxes, faceCount: detectedBoxes.length },
+            result: {
+              ...result,
+              faceBoxes: detectedBoxes,
+              faceCount: activeDetectedCount(detectedBoxes, item.removedFaceIndices),
+            },
             manualFaceBoxes,
           })
         } catch {
@@ -280,6 +313,84 @@ export function useAnonymizeQueue(method: AnonymizeMethod) {
     [applyManualFacesChange],
   )
 
+  /**
+   * Shared implementation for removing/resizing a detected face — mirrors
+   * `applyManualFacesChange` but works on the `removedFaceIndices`/`faceBoxOverrides` pair
+   * instead of the manual faces array.
+   */
+  const applyDetectedFacesChange = useCallback(
+    (
+      itemId: string,
+      updater: (item: QueueItem) => { removedFaceIndices: number[]; faceBoxOverrides: Record<number, Box> },
+    ) => {
+      const item = itemsRef.current.find((entry) => entry.id === itemId)
+      if (!item || item.status !== 'done' || !item.result) return
+      if (facesUpdatingRef.current.has(itemId)) return
+
+      const { removedFaceIndices, faceBoxOverrides } = updater(item)
+      const detectedBoxes = item.result.faceBoxes
+      const { boxes, excluded } = buildCombinedRenderInputs(
+        detectedBoxes,
+        item.excludedFaceIndices,
+        removedFaceIndices,
+        faceBoxOverrides,
+        item.manualFaceBoxes,
+      )
+
+      facesUpdatingRef.current.add(itemId)
+      setFacesUpdatingIds(Array.from(facesUpdatingRef.current))
+
+      void (async () => {
+        try {
+          const result = await reapplyEffect(
+            item.file,
+            boxes,
+            { ...DEFAULT_ANONYMIZE_OPTIONS, method: methodRef.current },
+            excluded,
+          )
+          URL.revokeObjectURL(item.result!.url)
+          updateItem(itemId, {
+            result: {
+              ...result,
+              faceBoxes: detectedBoxes,
+              faceCount: activeDetectedCount(detectedBoxes, removedFaceIndices),
+            },
+            removedFaceIndices,
+            faceBoxOverrides,
+          })
+        } catch {
+          // Keep the previous result rather than losing it over a transient canvas error.
+        } finally {
+          facesUpdatingRef.current.delete(itemId)
+          setFacesUpdatingIds(Array.from(facesUpdatingRef.current))
+        }
+      })()
+    },
+    [updateItem],
+  )
+
+  const removeFace = useCallback(
+    (itemId: string, faceIndex: number) => {
+      applyDetectedFacesChange(itemId, (item) => ({
+        removedFaceIndices: item.removedFaceIndices.includes(faceIndex)
+          ? item.removedFaceIndices
+          : [...item.removedFaceIndices, faceIndex],
+        faceBoxOverrides: item.faceBoxOverrides,
+      }))
+    },
+    [applyDetectedFacesChange],
+  )
+
+  const resizeFace = useCallback(
+    (itemId: string, faceIndex: number, box: Box) => {
+      applyDetectedFacesChange(itemId, (item) => ({
+        removedFaceIndices: item.removedFaceIndices,
+        faceBoxOverrides: { ...item.faceBoxOverrides, [faceIndex]: box },
+      }))
+    },
+    [applyDetectedFacesChange],
+  )
+
   const isProcessing = items.some((item) => item.status === 'queued' || item.status === 'processing')
   const doneCount = items.filter((item) => item.status === 'done').length
 
@@ -298,5 +409,7 @@ export function useAnonymizeQueue(method: AnonymizeMethod) {
     removeManualFace,
     toggleManualFace,
     resizeManualFace,
+    removeFace,
+    resizeFace,
   }
 }

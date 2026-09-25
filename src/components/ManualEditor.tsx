@@ -12,10 +12,13 @@ interface ManualEditorProps {
   onRemoveManualFace: (itemId: string, faceId: string) => void
   onToggleManualFace: (itemId: string, faceId: string) => void
   onResizeManualFace: (itemId: string, faceId: string, box: Box) => void
+  onRemoveFace: (itemId: string, faceIndex: number) => void
+  onResizeFace: (itemId: string, faceIndex: number, box: Box) => void
   facesUpdatingIds: string[]
   onAddFiles: (files: File[]) => void
   onClear: () => void
   onDownloadAll: () => void
+  onDownloadImage: (itemId: string) => void
   canDownload: boolean
   isProcessing: boolean
   isReapplying: boolean
@@ -34,10 +37,13 @@ export function ManualEditor({
   onRemoveManualFace,
   onToggleManualFace,
   onResizeManualFace,
+  onRemoveFace,
+  onResizeFace,
   facesUpdatingIds,
   onAddFiles,
   onClear,
   onDownloadAll,
+  onDownloadImage,
   canDownload,
   isProcessing,
   isReapplying,
@@ -55,6 +61,28 @@ export function ManualEditor({
     : (items[0]?.id ?? null)
   const selectedItem = items.find((item) => item.id === effectiveSelectedId) ?? null
 
+  // Left/right arrow keys step through the filmstrip, so the currently visible image can be
+  // reached without reaching for the mouse.
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+      if (event.metaKey || event.ctrlKey || event.altKey) return
+      const target = event.target as HTMLElement | null
+      if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return
+
+      const currentIndex = items.findIndex((item) => item.id === effectiveSelectedId)
+      if (currentIndex === -1) return
+      const nextItem = items[event.key === 'ArrowLeft' ? currentIndex - 1 : currentIndex + 1]
+      if (!nextItem) return
+
+      event.preventDefault()
+      setSelectedId(nextItem.id)
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [items, effectiveSelectedId])
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <Toolbar
@@ -63,6 +91,9 @@ export function ManualEditor({
         onAddFiles={onAddFiles}
         onClear={onClear}
         onDownloadAll={onDownloadAll}
+        onDownloadImage={
+          selectedItem?.status === 'done' ? () => onDownloadImage(selectedItem.id) : undefined
+        }
         canDownload={canDownload}
         isProcessing={isProcessing}
         isReapplying={isReapplying}
@@ -77,6 +108,8 @@ export function ManualEditor({
         onRemoveManualFace={onRemoveManualFace}
         onToggleManualFace={onToggleManualFace}
         onResizeManualFace={onResizeManualFace}
+        onRemoveFace={onRemoveFace}
+        onResizeFace={onResizeFace}
         isUpdating={selectedItem ? facesUpdatingIds.includes(selectedItem.id) : false}
       />
 
@@ -91,6 +124,7 @@ function Toolbar({
   onAddFiles,
   onClear,
   onDownloadAll,
+  onDownloadImage,
   canDownload,
   isProcessing,
   isReapplying,
@@ -102,6 +136,8 @@ function Toolbar({
   onAddFiles: (files: File[]) => void
   onClear: () => void
   onDownloadAll: () => void
+  /** Downloads just the currently selected image — undefined when it isn't done yet. */
+  onDownloadImage: (() => void) | undefined
   canDownload: boolean
   isProcessing: boolean
   isReapplying: boolean
@@ -160,6 +196,15 @@ function Toolbar({
         </button>
         <button
           type="button"
+          data-testid="download-current"
+          onClick={onDownloadImage}
+          disabled={!onDownloadImage}
+          className="flex h-9 items-center whitespace-nowrap rounded-lg border border-border px-3 text-sm font-medium text-ink transition-colors hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Bild herunterladen
+        </button>
+        <button
+          type="button"
           data-testid="download-all"
           onClick={onDownloadAll}
           disabled={!canDownload}
@@ -179,6 +224,8 @@ function EditArea({
   onRemoveManualFace,
   onToggleManualFace,
   onResizeManualFace,
+  onRemoveFace,
+  onResizeFace,
   isUpdating,
 }: {
   item: QueueItem | null
@@ -187,6 +234,8 @@ function EditArea({
   onRemoveManualFace: (itemId: string, faceId: string) => void
   onToggleManualFace: (itemId: string, faceId: string) => void
   onResizeManualFace: (itemId: string, faceId: string, box: Box) => void
+  onRemoveFace: (itemId: string, faceIndex: number) => void
+  onResizeFace: (itemId: string, faceIndex: number, box: Box) => void
   isUpdating: boolean
 }) {
   if (!item) {
@@ -228,6 +277,8 @@ function EditArea({
         onRemoveManualFace={onRemoveManualFace}
         onToggleManualFace={onToggleManualFace}
         onResizeManualFace={onResizeManualFace}
+        onRemoveFace={onRemoveFace}
+        onResizeFace={onResizeFace}
         isUpdating={isUpdating}
       />
     </div>
@@ -261,6 +312,8 @@ function FaceCanvas({
   onRemoveManualFace,
   onToggleManualFace,
   onResizeManualFace,
+  onRemoveFace,
+  onResizeFace,
   isUpdating,
 }: {
   item: QueueItem
@@ -269,6 +322,8 @@ function FaceCanvas({
   onRemoveManualFace: (itemId: string, faceId: string) => void
   onToggleManualFace: (itemId: string, faceId: string) => void
   onResizeManualFace: (itemId: string, faceId: string, box: Box) => void
+  onRemoveFace: (itemId: string, faceIndex: number) => void
+  onResizeFace: (itemId: string, faceIndex: number, box: Box) => void
   isUpdating: boolean
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -341,17 +396,25 @@ function FaceCanvas({
       />
 
       {rect &&
-        faceBoxes.map((box, index) => (
-          <FaceMarker
-            key={index}
-            box={box}
-            index={index}
-            rect={rect}
-            excluded={item.excludedFaceIndices.includes(index)}
-            disabled={isUpdating}
-            onToggle={() => onToggleFace(item.id, index)}
-          />
-        ))}
+        naturalSize &&
+        faceBoxes.map((box, index) => {
+          if (item.removedFaceIndices.includes(index)) return null
+          return (
+            <FaceMarker
+              key={index}
+              box={item.faceBoxOverrides[index] ?? box}
+              index={index}
+              rect={rect}
+              naturalSize={naturalSize}
+              containerRef={containerRef}
+              excluded={item.excludedFaceIndices.includes(index)}
+              disabled={isUpdating}
+              onToggle={() => onToggleFace(item.id, index)}
+              onResize={(nextBox) => onResizeFace(item.id, index, nextBox)}
+              onRemove={() => onRemoveFace(item.id, index)}
+            />
+          )
+        })}
 
       {rect &&
         naturalSize &&
@@ -371,8 +434,9 @@ function FaceCanvas({
 
       {rect && (
         <p className="pointer-events-none absolute bottom-3 left-3 max-w-[85%] rounded-md bg-black/55 px-2.5 py-1.5 text-xs text-white">
-          Tipp: Doppelklick fügt ein nicht erkanntes Gesicht manuell hinzu — am Punkt lässt sich die
-          Größe anpassen, über das × wieder entfernen.
+          Tipp: Doppelklick fügt ein nicht erkanntes Gesicht manuell hinzu. Jeder Marker lässt sich
+          über den Punkt in der Größe anpassen und über das × entfernen — auch automatisch erkannte,
+          falls die KI etwas fälschlich als Gesicht markiert hat.
         </p>
       )}
 
@@ -385,58 +449,129 @@ function FaceCanvas({
   )
 }
 
+/**
+ * A detected face marker — click toggles anonymization like before, plus a drag handle to
+ * resize it and a remove button to permanently dismiss it as a false positive. A solid
+ * border distinguishes it from a dashed `ManualFaceMarker`.
+ */
 function FaceMarker({
   box,
   index,
   rect,
+  naturalSize,
+  containerRef,
   excluded,
   disabled,
   onToggle,
+  onResize,
+  onRemove,
 }: {
   box: Box
   index: number
   rect: ContainRect
+  naturalSize: { width: number; height: number }
+  containerRef: { current: HTMLDivElement | null }
   excluded: boolean
   disabled: boolean
   onToggle: () => void
+  onResize: (box: Box) => void
+  onRemove: () => void
 }) {
-  const size = Math.max(box.width, box.height) * 1.5 * rect.scale
-  const centerX = rect.offsetX + (box.x + box.width / 2) * rect.scale
-  const centerY = rect.offsetY + (box.y + box.height / 2) * rect.scale
+  const [liveBox, setLiveBox] = useState<Box | null>(null)
+  const effectiveBox = liveBox ?? box
+
+  const size = Math.max(effectiveBox.width, effectiveBox.height) * rect.scale
+  const centerX = rect.offsetX + (effectiveBox.x + effectiveBox.width / 2) * rect.scale
+  const centerY = rect.offsetY + (effectiveBox.y + effectiveBox.height / 2) * rect.scale
+
+  function handleResizePointerDown(event: React.PointerEvent<HTMLSpanElement>) {
+    if (disabled) return
+    event.stopPropagation()
+    event.preventDefault()
+
+    const container = containerRef.current
+    if (!container) return
+    const centerSourceX = box.x + box.width / 2
+    const centerSourceY = box.y + box.height / 2
+    const minRadius = 12
+    const maxRadius = Math.min(naturalSize.width, naturalSize.height) / 2
+
+    function handleMove(moveEvent: PointerEvent) {
+      const containerRect = container!.getBoundingClientRect()
+      const sourceX = (moveEvent.clientX - containerRect.left - rect.offsetX) / rect.scale
+      const sourceY = (moveEvent.clientY - containerRect.top - rect.offsetY) / rect.scale
+      const radius = Math.min(
+        maxRadius,
+        Math.max(minRadius, Math.hypot(sourceX - centerSourceX, sourceY - centerSourceY)),
+      )
+      setLiveBox({ x: centerSourceX - radius, y: centerSourceY - radius, width: radius * 2, height: radius * 2 })
+    }
+
+    function handleUp(upEvent: PointerEvent) {
+      handleMove(upEvent)
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleUp)
+      // Read the just-set live box back out via the setter to commit it exactly once.
+      setLiveBox((current) => {
+        if (current) onResize(current)
+        return null
+      })
+    }
+
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', handleUp)
+  }
 
   return (
-    <button
-      type="button"
+    <div
       data-testid="face-marker"
       data-face-index={index}
       data-excluded={excluded}
-      disabled={disabled}
-      onClick={onToggle}
-      aria-label={
-        excluded
-          ? `Gesicht ${index + 1}: nicht anonymisiert, anklicken zum Anonymisieren`
-          : `Gesicht ${index + 1}: anonymisiert, anklicken zum Ausnehmen`
-      }
-      className={`absolute rounded-full border-2 transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-        excluded
-          ? 'border-secondary bg-secondary/10 hover:bg-secondary/20'
-          : 'border-primary bg-primary/10 hover:bg-primary/20'
-      }`}
-      style={{
-        left: centerX - size / 2,
-        top: centerY - size / 2,
-        width: size,
-        height: size,
-      }}
+      className={`absolute ${disabled ? 'pointer-events-none opacity-60' : ''}`}
+      style={{ left: centerX - size / 2, top: centerY - size / 2, width: size, height: size }}
     >
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onToggle}
+        aria-label={
+          excluded
+            ? `Gesicht ${index + 1}: nicht anonymisiert, anklicken zum Anonymisieren`
+            : `Gesicht ${index + 1}: anonymisiert, anklicken zum Ausnehmen`
+        }
+        className={`h-full w-full rounded-full border-2 transition-colors disabled:cursor-not-allowed ${
+          excluded
+            ? 'border-secondary bg-secondary/10 hover:bg-secondary/20'
+            : 'border-primary bg-primary/10 hover:bg-primary/20'
+        }`}
+      />
       <span
-        className={`absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border border-white text-white shadow ${
+        className={`pointer-events-none absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border border-white text-white shadow ${
           excluded ? 'bg-secondary' : 'bg-primary'
         }`}
       >
         {excluded ? <FaceVisibleIcon /> : <FaceHiddenIcon />}
       </span>
-    </button>
+      <span
+        data-testid="face-resize-handle"
+        onPointerDown={handleResizePointerDown}
+        aria-hidden="true"
+        className="absolute -left-1 -top-1 h-3.5 w-3.5 cursor-nwse-resize rounded-full border border-white bg-ink shadow"
+      />
+      <button
+        type="button"
+        data-testid="face-remove"
+        disabled={disabled}
+        onClick={(event) => {
+          event.stopPropagation()
+          onRemove()
+        }}
+        aria-label={`Gesicht ${index + 1} entfernen (falsch erkannt)`}
+        className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full border border-white bg-ink text-white shadow transition-colors hover:bg-ink/80 disabled:cursor-not-allowed"
+      >
+        <RemoveIcon />
+      </button>
+    </div>
   )
 }
 
@@ -571,8 +706,21 @@ function Filmstrip({
   selectedId: string | null
   onSelect: (id: string) => void
 }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  // Keeps the current image's thumbnail in view when arrow-key navigation moves the
+  // selection past the edge of the visible (horizontally scrolling) filmstrip.
+  useEffect(() => {
+    if (!selectedId) return
+    const container = containerRef.current
+    if (!container) return
+    const selectedButton = container.querySelector(`[data-item-id="${selectedId}"]`)
+    selectedButton?.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' })
+  }, [selectedId])
+
   return (
     <div
+      ref={containerRef}
       data-testid="filmstrip"
       className="flex h-28 shrink-0 items-center gap-2 overflow-x-auto border-t border-border bg-surface-alt px-4 py-2 sm:px-8 lg:px-12 xl:px-20"
     >

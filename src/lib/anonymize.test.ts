@@ -40,6 +40,21 @@ describe('padBox', () => {
     expect(result.width).toBeGreaterThan(0)
     expect(result.height).toBeGreaterThan(0)
   })
+
+  it('caps the padding in absolute pixels for a large face instead of scaling with it', () => {
+    // A close-up face taking up most of a 1000x1000 image: the raw fraction (0.2 * 800 = 160)
+    // would dwarf the photo's own scale, so it should be capped well below that.
+    const big = box({ x: 100, y: 100, width: 800, height: 800 })
+    const result = padBox(big, 0.2, 1000, 1000)
+    const sidePadding = big.x - result.x
+    expect(sidePadding).toBeLessThan(800 * 0.2)
+    expect(sidePadding).toBeCloseTo(35, 5) // 1000 * 0.035
+  })
+
+  it('leaves a typically-sized face unaffected by the cap', () => {
+    const result = padBox(box(), 0.2, 1000, 1000)
+    expect(result.x).toBe(90) // uncapped: 50 * 0.2 = 10
+  })
 })
 
 describe('buildOutputFileName', () => {

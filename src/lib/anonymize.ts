@@ -10,7 +10,9 @@ export interface AnonymizeOptions {
 
 export const DEFAULT_ANONYMIZE_OPTIONS: AnonymizeOptions = {
   method: 'pixelate',
-  padding: 0.35,
+  // Kept small enough that two faces close together (e.g. side by side in a group photo)
+  // don't have their padded regions overlap and blur into each other.
+  padding: 0.2,
 }
 
 const NO_EXCLUSIONS: ReadonlySet<number> = new Set()
@@ -90,11 +92,18 @@ function renderAnonymized(
 }
 
 export function padBox(box: Box, padding: number, maxWidth: number, maxHeight: number): Box {
-  const padX = box.width * padding
+  // padding is a fraction of the face box, so it normally grows in lockstep with the face —
+  // fine for a typical face, but for a large box (a close-up portrait, or a big face in a
+  // high-resolution photo) that fraction alone balloons into far more padding than the photo
+  // needs. Cap it in absolute pixels, scaled to the image rather than the face, so it stops
+  // growing past a sensible amount once the face is already large.
+  const maxPad = Math.min(maxWidth, maxHeight) * 0.035
+
+  const padX = Math.min(box.width * padding, maxPad)
   // A bit of extra headroom above the box, since face detectors tend to crop
   // foreheads/hair tightly.
-  const padTop = box.height * padding * 1.6
-  const padBottom = box.height * padding
+  const padTop = Math.min(box.height * padding * 1.6, maxPad * 1.6)
+  const padBottom = Math.min(box.height * padding, maxPad)
 
   const x = clamp(box.x - padX, 0, maxWidth)
   const y = clamp(box.y - padTop, 0, maxHeight)

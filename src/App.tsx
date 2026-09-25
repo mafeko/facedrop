@@ -4,6 +4,7 @@ import { ImageGrid } from './components/ImageGrid'
 import { ManualEditor } from './components/ManualEditor'
 import { MethodToggle } from './components/MethodToggle'
 import { useAnonymizeQueue } from './hooks/useAnonymizeQueue'
+import { downloadImage } from './lib/download'
 import { downloadAllAsZip } from './lib/zip'
 import type { AnonymizeMethod } from './types'
 
@@ -26,6 +27,8 @@ function App() {
     removeManualFace,
     toggleManualFace,
     resizeManualFace,
+    removeFace,
+    resizeFace,
     facesUpdatingIds,
     limitNotice,
     dismissLimitNotice,
@@ -38,6 +41,11 @@ function App() {
   async function handleDownloadAll() {
     const results = items.filter((item) => item.result).map((item) => item.result!)
     await downloadAllAsZip(results)
+  }
+
+  function handleDownloadImage(itemId: string) {
+    const item = items.find((entry) => entry.id === itemId)
+    if (item?.result) downloadImage(item.result)
   }
 
   function handleEditManually(itemId: string) {
@@ -106,10 +114,13 @@ function App() {
           onRemoveManualFace={removeManualFace}
           onToggleManualFace={toggleManualFace}
           onResizeManualFace={resizeManualFace}
+          onRemoveFace={removeFace}
+          onResizeFace={resizeFace}
           facesUpdatingIds={facesUpdatingIds}
           onAddFiles={addFiles}
           onClear={clear}
           onDownloadAll={handleDownloadAll}
+          onDownloadImage={handleDownloadImage}
           canDownload={canDownload}
           isProcessing={isProcessing}
           isReapplying={isReapplying}
@@ -175,7 +186,7 @@ function App() {
             )}
 
             <div className="mt-6">
-              <ImageGrid items={items} onEditManually={handleEditManually} />
+              <ImageGrid items={items} onEditManually={handleEditManually} onDownloadImage={handleDownloadImage} />
             </div>
           </main>
 

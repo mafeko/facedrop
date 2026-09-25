@@ -5,9 +5,10 @@ interface ImagePreviewModalProps {
   item: QueueItem
   onClose: () => void
   onEditManually: () => void
+  onDownload: () => void
 }
 
-export function ImagePreviewModal({ item, onClose, onEditManually }: ImagePreviewModalProps) {
+export function ImagePreviewModal({ item, onClose, onEditManually, onDownload }: ImagePreviewModalProps) {
   // Shown for every processed image, not just ones with a detected face — manual editing
   // also covers adding a face the detector missed entirely (e.g. a crowded group photo).
   const canEditManually = item.status === 'done'
@@ -63,20 +64,50 @@ export function ImagePreviewModal({ item, onClose, onEditManually }: ImagePrevie
       </p>
 
       {canEditManually && (
-        <button
-          type="button"
-          data-testid="preview-edit-manually"
-          onClick={(event) => {
-            event.stopPropagation()
-            onEditManually()
-          }}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-primary-hover"
-        >
-          <PencilIcon />
-          Manuell bearbeiten
-        </button>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <button
+            type="button"
+            data-testid="preview-download"
+            onClick={(event) => {
+              event.stopPropagation()
+              onDownload()
+            }}
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-primary-hover"
+          >
+            <DownloadIcon />
+            Bild herunterladen
+          </button>
+          <button
+            type="button"
+            data-testid="preview-edit-manually"
+            onClick={(event) => {
+              event.stopPropagation()
+              onEditManually()
+            }}
+            className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-4 py-2 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-white/20"
+          >
+            <PencilIcon />
+            Manuell bearbeiten
+          </button>
+        </div>
       )}
     </div>
+  )
+}
+
+function DownloadIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      className="h-4 w-4"
+      aria-hidden="true"
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v13m0 0-4.5-4.5M12 16l4.5-4.5" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 18v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2" />
+    </svg>
   )
 }
 

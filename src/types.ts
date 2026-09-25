@@ -37,6 +37,12 @@ export interface QueueItem {
   error?: string
   /** Indices into `result.faceBoxes` that are excluded from anonymization (kept visible). */
   excludedFaceIndices: number[]
+  /** Indices into `result.faceBoxes` the user permanently removed as false positives —
+   * hidden from the canvas and never anonymized, independent of `excludedFaceIndices`. */
+  removedFaceIndices: number[]
+  /** Per-detected-face box overrides (keyed by index into `result.faceBoxes`) from the user
+   * resizing a detected face's marker. */
+  faceBoxOverrides: Record<number, Box>
   /** User-added faces the detector didn't find, e.g. in a crowded group photo. */
   manualFaceBoxes: ManualFace[]
 }
